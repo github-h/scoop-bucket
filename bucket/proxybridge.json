@@ -1,4 +1,5 @@
 {
+    "##": "Portable install: no Windows service, no HKLM writes. ProxyBridge self-elevates (UAC) on every start. Upgrade with 'scoop update proxybridge'.",
     "version": "4.3.0",
     "description": "A Proxifier alternative to redirect any TCP and UDP traffic to HTTP/SOCKS5 proxy.",
     "homepage": "https://interceptsuite.com",
@@ -9,35 +10,52 @@
             "hash": "64992b813e4b406466540f7cc01332ef90ffe3b234719694347175fd85a3f1f9"
         }
     },
-    "post_install": "Remove-Item \"$dir\\`$PLUGINSDIR\" -Force -Recurse -ErrorAction SilentlyContinue",
+    "notes": [
+        "便携模式：未注册 ProxyBridgeSvc 服务，所以每次启动都会弹 UAC，这是预期行为。",
+        "升级统一走 scoop update proxybridge；先在程序内 Help > Check for Updates 选 Don't Ask Again，避免它拉官方安装器装到 Program Files。",
+        "升级前请关闭 GUI 和 CLI：scoop 检测到进程在跑会跳过本次更新。",
+        "同一时间只能运行一个实例（GUI 或 CLI）。",
+        "ProxyBridge_CLI 需要管理员终端运行；ProxyBridge_CLI --version 不需要管理员。",
+        "Settings > Run at Startup 可以开，登录时弹 UAC 属预期；配置在 %APPDATA%\\ProxyBridge，已持久化到 scoop persist 目录。"
+    ],
     "installer": {
         "script": [
             "ensure \"$persist_dir\" | Out-Null",
             "$targetPath = \"$env:APPDATA\\ProxyBridge\"",
-            "$linkType = (Get-Item -Path $targetPath -ErrorAction SilentlyContinue).LinkType",
-            "if (Test-Path $targetPath) {",
-            "    if ($linkType -eq 'Junction') {",
-            "        Remove-Item -Path $targetPath -Force",
-            "    } else {",
-            "        Get-ChildItem -Path $targetPath -Force | Move-Item -Destination $persist_dir -Force",
-            "        Remove-Item -Path $targetPath -Force -Recurse",
-            "    }",
+            "$existing = Get-Item -LiteralPath $targetPath -Force -ErrorAction SilentlyContinue",
+            "if ($existing) {",
+            "    if ($existing.LinkType -eq 'Junction') { cmd /c rmdir \"$targetPath\" | Out-Null }",
+            "    else { Get-ChildItem -LiteralPath $targetPath -Force | Move-Item -Destination $persist_dir -Force; Remove-Item -LiteralPath $targetPath -Recurse -Force }",
             "}",
-            "New-Item -Path $targetPath -ItemType Junction -Target \"$persist_dir\" | Out-Null"
+            "New-Item -ItemType Junction -Path $targetPath -Target $persist_dir | Out-Null"
         ]
     },
+    "post_install": "Remove-Item \"$dir\\`$PLUGINSDIR\" -Force -Recurse -ErrorAction SilentlyContinue",
     "pre_uninstall": [
-        "if (!(is_admin)) { error \"$app requires admin rights to uninstall (to stop windivert driver). Run 'sudo scoop uninstall $app' or from an admin shell.\"; break }",
-        "Stop-Service 'windivert' -ErrorAction SilentlyContinue",
-        "Start-Sleep -Seconds 2"
+        "$appDir = Split-Path $dir -Parent",
+        "if (is_admin) {",
+        "    Get-NetFirewallRule -DisplayName 'ProxyBridge relay*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue",
+        "    $svc = Get-CimInstance Win32_Service -Filter \"Name='ProxyBridgeSvc'\" -ErrorAction SilentlyContinue",
+        "    if ($svc -and ($svc.PathName -like \"*$appDir*\")) { sc.exe stop ProxyBridgeSvc 2>$null | Out-Null; sc.exe delete ProxyBridgeSvc 2>$null | Out-Null }",
+        "    sc.exe stop WinDivert 2>$null | Out-Null",
+        "    sc.exe delete WinDivert 2>$null | Out-Null",
+        "    Remove-Item 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WinDivert' -Recurse -Force -ErrorAction SilentlyContinue",
+        "}",
+        "Remove-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'ProxyBridge' -ErrorAction SilentlyContinue",
+        "Start-Sleep -Seconds 1"
     ],
     "uninstaller": {
-        "script": "Remove-Item \"$env:APPDATA\\ProxyBridge\" -Recurse -Force -ErrorAction SilentlyContinue"
+        "script": [
+            "$p = \"$env:APPDATA\\ProxyBridge\"",
+            "$i = Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue",
+            "if ($i -and $i.LinkType -eq 'Junction') { cmd /c rmdir \"$p\" | Out-Null }",
+            "elseif ($i) { Write-Host \"$p 不是 junction，按官方行为保留用户配置。\" -ForegroundColor Yellow }"
+        ]
     },
     "bin": [
         [
             "ProxyBridge_CLI.exe",
-            "ProxyBridge"
+            "ProxyBridge_CLI"
         ]
     ],
     "shortcuts": [
@@ -47,9 +65,10 @@
         ]
     ],
     "checkver": {
-        "github": "https://github.com/InterceptSuite/ProxyBridge",
+        "github": "https://api.github.com/repos/InterceptSuite/ProxyBridge/releases",
         "jsonpath": "$..assets[?(@.browser_download_url =~ /ProxyBridge-Setup-(?<version>[\\d.]+)\\.exe/i)].browser_download_url",
-        "regex": "download/v(?<tag>[\\d.]+)/ProxyBridge-Setup-(?<version>[\\d.]+)\\.exe"
+        "regex": "download/v(?<tag>[^/]+)/ProxyBridge-Setup-(?<version>[\\d.]+)\\.exe",
+        "replace": "${version}"
     },
     "autoupdate": {
         "architecture": {
