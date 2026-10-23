@@ -5,10 +5,7 @@
     "homepage": "https://gd.xychr.com/",
     "license": "GPL-3.0-only",
     "notes": [
-        "Portable mode: app data (config, log, feature packs, runtime packs) lives in the GhostDownloader folder next to the exe, which is persisted to Scoop's persist dir.",
-        "Portable mode is triggered by that folder existing - keep $dir\\GhostDownloader in place.",
-        "Turn off Settings > Software > 'Check update at startup' so Scoop stays the single source of truth for upgrades (the bundled updater would overwrite files Scoop owns).",
-        "4.4.5 is a security release: keep 'Verify SSL certificates' enabled in download settings.",
+        "便携模式：应用程序数据（配置、日志、功能包、运行时包）位于exe文件旁边的GhostDownloader文件夹中，该文件夹会保留在Scoop的持久目录中。",
         "CLI: ghd --help (installed as the 'ghd' shim)."
     ],
     "architecture": {
